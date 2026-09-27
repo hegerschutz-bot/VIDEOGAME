@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D Top Down Game</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: #111;
+        font-family: Vollkorn, serif;
+    }
+
+    canvas {
+        display: block;
+        background: #0a0a0a;
+    }
+
+    #controls {
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        padding: 10px 15px;
+        background: rgba(250, 210, 32, 2.5);
+        font-family: Vollkorn, serif;
+        color: white;
+        border-radius: 8px;
+        user-select: none;
+    }
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="controls">
+    WASD to move
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const controls = document.getElementById("controls");
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+
+// =========================
+// WORLD
+// =========================
+
+const world = {
+    width: 1500,
+    height: 1250
+};
+
+
+// =========================
+// OBJECTS
+// =========================
+
+const objects = [];
+
+function createObjects(x, y, width, height, type, color) {
+    objects.push({
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        type: type,
+        color: color,
+        centerX: x + width / 2,
+        centerY: y + height / 2
+    
+    });
+}
+
+//createObjects(600, 500, 60, 60, "tree", "color");
+createObjects( (world.width / 2) + 300, world.height / 2 , 60, 60, "switchStone", "#ada48b" );
+createObjects( (world.width / 2) - 300, world.height / 2 , 60, 60, "switchStone", "#ada48b" );
+createObjects( world.width / 2, (world.height / 2) - 350, 40, 40, "basicEnemy", "#e3350e" ); 
+
+
+// =========================
+// CHARACTERS
+// =========================
+
+const characters = [
+    { name: "1", type: "whip", color: "#3498db", width: 40, height: 40, health: 5, currentHP: 5, },
+    { name: "2", type: "bomb", color: "#e74c3c", width: 40, height: 40, health: 6, currentHP: 6, },
+    { name: "3", type: "fire", color: "#2ecc71" },
+    { name: "4", type: "animal", color: "#f1c40f" },
+    { name: "5", type: "summon", color: "#9b59b6" }
+];
+
+let playerCharacter = 0;
+let followerCharacter = 1;
+
+const player = {
+    x: world.width / 2,
+    y: world.height / 2,
+
+    targetX: world.width / 2,
+    targetY: world.height / 2,
+
+    width: characters[playerCharacter].width,
+    height: characters[playerCharacter].height,
+
+    speed: 5,
+
+    color: characters[playerCharacter].color,
+
+    health: characters[playerCharacter].health,
+
+    type: characters[playerCharacter].type,
+
+    name: characters[playerCharacter].name
+};
+
+
+const follower = {
+    x: player.x,
+    y: player.y + 100,
+
+    targetX: (world.width / 2) + 15,
+    targetY: world.height / 2,
+    
+    width: characters[followerCharacter].width,
+    height: characters[followerCharacter].height,
+    
+    speed: 5,
+    acceleration: 0.4,
+    
+    vx: 0,
+    vy: 0,
+    
+    color: characters[followerCharacter].color,
+
+    health: characters[followerCharacter].health,
+
+    type: characters[followerCharacter].type,
+
+    name: characters[followerCharacter].name
+};
+//==========================
+//GLOBAL VARIABLES
+//========================== 
+let centered = false;
+let followerLocked = false;
+let characterConfig = 0;
+let mouseX = 0;
+let mouseY = 0;
+let switchMenuOpen = false;
+const switchDistance = 100;
+let nearSwitchStone = false;
+let draggedCharacter = null;
+let draggedSlot = null;
+const switchSlots = [
+    { x: ((canvas.width / 2) - 50) - 75, y: ((canvas.height / 2) - 50) - 100, width: 100, height: 100 },
+    { x: ((canvas.width / 2) - 50) + 75, y: ((canvas.height / 2) - 50) - 100, width: 100, height: 100 },
+    { x: ((canvas.width / 2) - 50) - 125, y: ((canvas.height / 2) - 50) + 75, width: 100, height: 100 },
+    { x: (canvas.width / 2) - 50, y: ((canvas.height / 2) - 50) + 75, width: 100, height: 100 },
+    { x: ((canvas.width / 2) - 50) + 125, y: ((canvas.height / 2) - 50) + 75, width: 100, height: 100 }
+];
+
+//=========================
+//UPDATE CHARACTERS
+//=========================
+function updateCharacters() {
+    player.color = characters[playerCharacter].color;
+    follower.color = characters[followerCharacter].color;
+    
+    player.health = characters[playerCharacter].health;
+    follower.health = characters[followerCharacter].health;
+    
+    player.currentHP = characters[playerCharacter].currentHP;
+    follower.currentHP = characters[followerCharacter].currentHP;
+    }
+
+
+//==========================
+//SWITCHING
+//==========================
+function checkSwitchStone() {
+
+    for (const object of objects) {
+
+        if (object.type === "switchStone") {
+
+            const playerCenterX = player.x + player.width / 2;
+            const playerCenterY = player.y + player.height / 2;
+
+            const dx = playerCenterX - object.centerX;
+
+            const dy = playerCenterY - object.centerY;
+
+            const switchingDistance = Math.sqrt(dx * dx + dy * dy);
+
+            if (switchingDistance <= switchDistance) {
+                nearSwitchStone = true;
+                break;
+            }
+
+            if (switchingDistance >= switchDistance) {
+                nearSwitchStone = false;
+            }
+        }
+    }
+}
+
+// =========================
+// CAMERA
+// =========================
+
+const camera = {
+    x: 0,
+    y: 0
+};
+
+
+// =========================
+// INPUT
+// =========================
+
+const keys = {};
+
+window.addEventListener("keydown", (event) => {
+    keys[event.key.toLowerCase()] = true;
+
+    if (event.key === " " && nearSwitchStone) {
+        switchMenuOpen = true;
+    }
+
+    if (event.key === "`") {
+        switchMenuOpen = false;
+    }
+});
+
+window.addEventListener("keyup", (event) => {
+    keys[event.key.toLowerCase()] = false;
+});
+
+canvas.addEventListener("mousedown", (event) => {
+    if (!switchMenuOpen) return;
+
+    const rect = canvas.getBoundingClientRect();
+
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    for (let i = 0; i < switchSlots.length; i++) {
+        const slot = switchSlots[i];
+
+        if (
+            mouseX >= slot.x &&
+            mouseX <= slot.x + slot.width &&
+            mouseY >= slot.y &&
+            mouseY <= slot.y + slot.height
+        ) {
+            draggedSlot = i;
+            draggedCharacter = characters[i];
+            break;
+        }
+    }
+});
+
+canvas.addEventListener("mouseup", (event) => {
+    if (!switchMenuOpen || draggedSlot === null) return;
+
+    const rect = canvas.getBoundingClientRect();
+
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    for (let i = 0; i < switchSlots.length; i++) {
+        const slot = switchSlots[i];
+
+        if (
+            mouseX >= slot.x &&
+            mouseX <= slot.x + slot.width &&
+            mouseY >= slot.y &&
+            mouseY <= slot.y + slot.height
+        ) {
+            // Swap the two characters
+            const temp = characters[draggedSlot];
+            characters[draggedSlot] = characters[i];
+            characters[i] = temp;
+
+            
+            // Slot 1 is always the player
+            playerCharacter = 0;
+
+            // Slot 2 is always the follower
+            followerCharacter = 1;
+
+            updateCharacters();
+
+            break;
+        }
+    }
+
+    draggedSlot = null;
+    draggedCharacter = null;
+
+});
+
+canvas.addEventListener("mousemove", (event) => {
+    const rect = canvas.getBoundingClientRect();
+
+    mouseX = event.clientX - rect.left;
+    mouseY = event.clientY - rect.top;
+});
+
+//=====================
+//MODE SWITCHING
+//=====================
+
+let modes = [0, 1, -1];
+let modeIndex = 0;
+let mode = modes[modeIndex];
+let scrollAmount = 0;
+
+canvas.addEventListener("wheel", (event) => {
+    scrollAmount += event.deltaY;
+    while(scrollAmount >= 350) {
+        scrollAmount -= 350;
+        // Scroll up
+        modeIndex++;
+
+        if (modeIndex >= modes.length) {
+            modeIndex = 0;
+        }
+    }
+
+    while(scrollAmount <= -350) {
+        scrollAmount += 350;
+        // Scroll down
+        modeIndex--;
+
+        if (modeIndex < 0) {
+            modeIndex = modes.length - 1;
+        }
+    }
+
+    mode = modes[modeIndex];
+
+    console.log("Mode:", mode);
+});
+
+
+
+function changeMode(){
+    if (mode === 0) {
+        playerCharacter = 0;
+        followerCharacter = 1;
+        followerLocked = false;
+        if (follower.speed = 5) {
+        follower.speed += 0.75;
+        } 
+        centered = false;
+        }
+    if (mode === 1) {
+        playerCharacter = 1;
+        followerCharacter = 0;
+        followerLocked = false;
+        if (follower.speed = 5) {
+        follower.speed += 0.75;
+        centered = false; 
+        } 
+        }
+    if (mode === -1) {
+        playerCharacter = 0;
+        followerCharacter = 1;
+        followerLocked = true;
+        if (follower.speed != 5) {
+        follower.speed -= 0.75;
+        } 
+        }
+    updateCharacters();
+    }
+
+function verifyPlayerPosition() {
+    if (mode == -1 && centered == false) {
+        centered = true;
+        }
+}
+//==========================
+//SPACE BAR TEXT CODE
+//==========================
+function changeSpaceText(){
+            if (nearSwitchStone === true) {
+                controls.textContent = "Switch";
+                } else {
+            controls.textContent = "========";
+    }
+}
+
+
+
+// =========================
+// DRAW OBJECTS
+// =========================
+
+function drawObjects() {
+
+    for (const object of objects) {
+
+        const x = object.x - camera.x;
+        const y = object.y - camera.y;
+        
+        ctx.fillStyle = object.color;
+        
+        ctx.fillRect(
+        x,
+        y,
+        object.width,
+        object.height
+        );
+        
+    }
+
+}
+
+
+
+
+// =========================
+// COLLISION
+// =========================
+
+function isColliding(a, b) {
+    return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+    );
+}
+
+
+function canMoveTo(entity, newX, newY) {
+
+    const testEntity = {
+        x: newX,
+        y: newY,
+        width: entity.width,
+        height: entity.height
+    };
+
+    for (const object of objects) {
+        if (isColliding(testEntity, object)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+
+
+// =========================
+// UPDATE PLAYER
+// =========================
+
+   function updatePlayerTarget() {
+    
+
+    let dx = 0;
+    let dy = 0;
+
+    if (keys["w"]) dy -= 1;
+    if (keys["s"]) dy += 1;
+    if (keys["a"]) dx -= 1;
+    if (keys["d"]) dx += 1;
+
+    // Normalize diagonal movement
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    if (length > 0) {
+        dx /= length;
+        dy /= length;
+
+        player.targetX += dx * player.speed;
+        player.targetY += dy * player.speed;
+    }
+}
+
+
+function updatePlayerPosition() {
+    if (mode !== -1) return;
+
+    const dx = player.targetX - player.x;
+    const dy = player.targetY - player.y;
+
+    
+    const moveX = Math.sign(dx) * Math.min(Math.abs(dx), player.speed);
+    const moveY = Math.sign(dy) * Math.min(Math.abs(dy), player.speed);
+
+    
+
+    if (moveX !== 0 && canMoveTo(player, player.x + moveX, player.y)) {
+        player.x += moveX;
+    }
+
+    if (moveY !== 0 && canMoveTo(player, player.x, player.y + moveY)) {
+        player.y += moveY;
+    }
+}
+
+function updatePlayer() {
+
+    if (switchMenuOpen) return;
+    
+    let dx = 0;
+    let dy = 0;
+
+    if (keys["w"]) {
+        dy -= 1;
+    }
+
+    if (keys["s"]) {
+        dy += 1;
+    }
+
+    if (keys["a"]) {
+        dx -= 1;
+    }
+
+    if (keys["d"]) {
+        dx += 1;
+    }
+
+
+    // Normalize diagonal movement
+    if (dx !== 0 || dy !== 0) {
+
+        const length = Math.sqrt(dx * dx + dy * dy);
+
+        dx /= length;
+        dy /= length;
+    }
+
+
+    const moveX = dx * player.speed;
+    const moveY = dy * player.speed;
+
+
+    // X collision
+    if (canMoveTo(player, player.x + moveX, player.y)) {
+        player.x += moveX;
+    }
+
+
+    // Y collision
+    if (canMoveTo(player, player.x, player.y + moveY)) {
+        player.y += moveY;
+    }
+
+
+    // Keep player inside world
+    player.x = Math.max(
+        0,
+        Math.min(world.width - player.width, player.x)
+    );
+
+    player.y = Math.max(
+        0,
+        Math.min(world.height - player.height, player.y)
+    );
+
+
+    // Camera follows player
+    if (centered == true) {
+    camera.x =
+        player.x +
+        player.width / 2 -
+        canvas.width / 2
+        +30;
+
+    camera.y =
+        player.y +
+        player.height / 2 -
+        canvas.height / 2;
+} else {
+      camera.x =
+        player.x +
+        player.width / 2 -
+        canvas.width / 2;
+
+    camera.y =
+        player.y +
+        player.height / 2 -
+        canvas.height / 2;
+        }
+
+    // Keep camera inside world
+    camera.x = Math.max(
+        0,
+        Math.min(world.width - canvas.width, camera.x)
+    );
+
+    camera.y = Math.max(
+        0,
+        Math.min(world.height - canvas.height, camera.y)
+    );
+   
+}
+
+
+
+// =========================
+// UPDATE FOLLOWER
+// =========================
+
+function updateFollowerTarget() {
+    if (mode !== -1) return;
+
+    follower.targetX = player.targetX + player.width + 15;
+    follower.targetY = player.targetY;
+}
+
+function updateFollowerPosition() {
+    if (mode !== -1) return;
+
+    const dx = follower.targetX - follower.x;
+    const dy = follower.targetY - follower.y;
+
+
+
+    const moveX = Math.sign(dx) * Math.min(Math.abs(dx), follower.speed);
+    const moveY = Math.sign(dy) * Math.min(Math.abs(dy), follower.speed);
+
+    if (moveX !== 0 && canMoveTo(follower, follower.x + moveX, follower.y)) {
+        follower.x += moveX;
+    }
+
+    if (moveY !== 0 && canMoveTo(follower, follower.x, follower.y + moveY)) {
+        follower.y += moveY;
+    }
+}
+
+function updateFollower() {
+   
+    
+   if (!keys["w"] && !keys["a"] && !keys["s"] && !keys["d"]) {
+    follower.vx = 0;
+    follower.vy = 0;
+}
+   
+
+    const followerCenterX = follower.x + follower.width / 2;
+    const followerCenterY = follower.y + follower.height / 2;
+
+    const playerCenterX = player.x + player.width / 2;
+    const playerCenterY = player.y + player.height / 2;
+
+    let dx = playerCenterX - followerCenterX;
+    let dy = playerCenterY - followerCenterY;
+
+  
+   
+
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    
+
+     if (distance > 70) {
+
+        // Normalize direction
+        dx /= distance;
+        dy /= distance;
+
+        // Gradually accelerate toward the player
+        follower.vx += dx * follower.acceleration;
+        follower.vy += dy * follower.acceleration;
+
+    } else {
+
+        // Gradually slow down when close
+        follower.vx *= 0.98;
+        follower.vy *= 0.98;
+    }
+
+    // Limit maximum speed
+    const velocity = Math.sqrt(
+        follower.vx * follower.vx +
+        follower.vy * follower.vy
+    );
+
+    if (velocity > follower.speed) {
+        follower.vx = (follower.vx / velocity) * follower.speed;
+        follower.vy = (follower.vy / velocity) * follower.speed;
+    }
+
+   if (canMoveTo(follower, follower.x + follower.vx, follower.y)) {
+    follower.x += follower.vx;
+} else {
+    follower.vx = 0;
+}
+
+if (canMoveTo(follower, follower.x, follower.y + follower.vy)) {
+    follower.y += follower.vy;
+} else {
+    follower.vy = 0;
+}
+    
+}
+
+
+// =========================
+// DRAW WORLD
+// =========================
+
+function drawWorld() {
+
+    // Grass background
+    ctx.fillStyle = "#0a0a0a";
+    ctx.fillRect(
+        -camera.x,
+        -camera.y,
+        world.width,
+        world.height
+    );
+
+
+    // Grass grid
+    ctx.strokeStyle = "rgba(120, 242, 75, 0.1)";
+    ctx.lineWidth = 1;
+
+    const gridSize = 50;
+
+    for (let x = 0; x <= world.width; x += gridSize) {
+
+        ctx.beginPath();
+
+        ctx.moveTo(x - camera.x, -camera.y);
+        ctx.lineTo(x - camera.x, world.height - camera.y);
+
+        ctx.stroke();
+    }
+
+    for (let y = 0; y <= world.height; y += gridSize) {
+
+        ctx.beginPath();
+
+        ctx.moveTo(-camera.x, y - camera.y);
+        ctx.lineTo(world.width - camera.x, y - camera.y);
+
+        ctx.stroke();
+    }
+}
+
+
+
+
+
+
+
+
+// =========================
+// DRAW FOLLOWER
+// =========================
+
+function drawFollower() {
+    const x = follower.x - camera.x;
+    const y = follower.y - camera.y;
+
+    ctx.fillStyle = follower.color;
+
+    ctx.fillRect(
+        x,
+        y,
+        follower.width,
+        follower.height
+    );
+}
+
+
+// =========================
+// DRAW PLAYER
+// =========================
+
+function drawPlayer() {
+
+    const x = player.x - camera.x;
+    const y = player.y - camera.y;
+
+
+   
+
+    ctx.fill();
+
+
+    // Body
+    ctx.fillStyle = player.color;
+
+    ctx.fillRect(
+        x,
+        y,
+        player.width,
+        player.height
+    );
+   
+}
+
+
+//=========================
+//DRAW HP BAR
+//=========================
+function drawHPBar() {
+    ctx.save();
+
+    // Screen coordinates, so it stays in the upper-left
+    ctx.fillStyle = "red";
+    ctx.font = "32px Arial";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+
+
+    for (let i = 0; i < player.health; i++) {
+        if (i < player.currentHP) {
+            ctx.fillText("♥", 1350 - i * 35, 15);
+        } else {
+            // Empty heart
+            ctx.fillStyle = "#555";
+            ctx.fillText("♥", 1350 - i * 35, 15);
+            ctx.fillStyle = "red";
+        }
+    }
+
+    if (mode === -1) {
+        for (let i = 0; i < follower.health; i++) {
+        if (i < follower.currentHP) {
+            ctx.fillText("♥", 1350 - i * 35, 40);
+        } else {
+            // Empty heart
+            ctx.fillStyle = "#555";
+            ctx.fillText("♥", 1350 - i * 35, 40);
+            ctx.fillStyle = "red";
+        }
+    }
+        }
+
+    ctx.restore();
+}
+
+//=========================
+//DRAW SWITCH MENU
+//=========================
+function drawSwitchMenu() {
+    if (!switchMenuOpen) return;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.fillRect( (canvas.width / 2) - 500, (canvas.height / 2) - 300, 1000, 600);
+
+    for (let i = 0; i < characters.length; i++) {
+    const slot = switchSlots[i];
+
+    // Don't draw the character in its original slot while dragging
+    if (draggedSlot !== i) {
+        ctx.fillStyle = characters[i].color;
+
+        ctx.fillRect(
+            slot.x + 25,
+            slot.y + 25,
+            50,
+            50
+        );
+    }
+
+    ctx.strokeStyle = "white";
+    ctx.strokeRect(
+        slot.x,
+        slot.y,
+        slot.width,
+        slot.height
+    );
+
+    ctx.fillStyle = "white";
+    ctx.font = "16px Vollkorn";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        characters[i].name,
+        slot.x + slot.width / 2,
+        slot.y + 90
+    );
+
+    ctx.fillStyle = "white";
+    ctx.font = "35px Vollkorn";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "Switch Menu",
+        canvas.width / 2,
+        (canvas.height / 2) - 200
+    );
+
+    ctx.fillStyle = "white";
+    ctx.font = "35px Vollkorn";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "Press ` to exit",
+        canvas.width / 2,
+        (canvas.height / 2) + 200
+    );
+}
+if (draggedCharacter !== null) {
+    ctx.globalAlpha = 0.7;
+
+    ctx.fillStyle = draggedCharacter.color;
+
+    ctx.fillRect(
+        mouseX - 25,
+        mouseY - 25,
+        50,
+        50
+    );
+
+    ctx.globalAlpha = 1;
+}
+}
+
+
+// =========================
+// DRAW WORLD BORDER
+// =========================
+
+function drawWorldBorder() {
+
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 10;
+
+    ctx.strokeRect(
+        -camera.x,
+        -camera.y,
+        world.width,
+        world.height
+    );
+}
+
+
+// =========================
+// GAME LOOP
+// =========================
+
+function gameLoop() {
+
+    updatePlayer();
+    updateFollower();
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+    
+    drawWorld();
+    drawObjects();
+    drawWorldBorder();
+    drawFollower();
+    drawHPBar();
+    changeMode();
+    verifyPlayerPosition();
+    drawPlayer();
+    checkSwitchStone();
+    drawSwitchMenu();
+    changeSpaceText();
+    updatePlayerTarget();
+    if (mode === -1) {
+    updateFollowerTarget();
+
+    updatePlayerPosition();
+    updateFollowerPosition();
+}
+
+    requestAnimationFrame(gameLoop);
+}
+
+
+gameLoop();
+
+</script>
+
+</body>
+</html>
